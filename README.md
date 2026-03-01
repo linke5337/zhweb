@@ -86,11 +86,12 @@ docker compose up -d --build
 
 ## 方案 B：本地 Mac 构建，一键部署到服务器
 
-**推荐用于 1核2G 服务器**。在本地 Mac 完成耗时的 `npm build`，只把运行镜像传给服务器。
+**推荐用于 1核2G 服务器**，同时解决 Mac (aarch64) → 服务器 (x86_64) 跨平台问题。
+在本地 Mac 用 `docker buildx` 编译 `linux/amd64` 镜像，打包后 SSH 传到服务器直接运行。
 
 ### 前置准备
 
-- 本地已安装 Docker Desktop
+- 本地已安装 Docker Desktop（自带 buildx）
 - 本地可通过 SSH 免密登录服务器（`ssh user@IP` 不需要输密码）
 
 ### 1. 修改部署脚本配置
@@ -109,12 +110,13 @@ chmod +x deploy.sh
 ./deploy.sh
 ```
 
-脚本会自动完成：
-1. **本地** `docker compose build`（构建前后端镜像）
-2. 打包镜像为 `.tar.gz`
-3. `scp` 上传到服务器
-4. 服务器 `docker load` 加载镜像
-5. 服务器 `docker compose up -d` 启动服务
+脚本自动完成以下步骤：
+1. 初始化 `buildx` 多平台构建器
+2. `docker buildx build --platform linux/amd64` 构建 x86_64 镜像（在 Mac 本地完成）
+3. 打包镜像为 `.tar.gz`
+4. `scp` 上传到服务器
+5. 服务器 `docker load` 加载镜像
+6. 服务器 `docker compose up -d` 启动服务
 
 ### 3. 首次部署后在服务器修改 `.env`
 
