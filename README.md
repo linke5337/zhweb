@@ -10,11 +10,33 @@
 | 管理后台 | 住客列表、照片预览灯箱、CSV 批量导出、照片 ZIP 下载、删除记录 |
 | 技术特性 | Docker 一键部署、照片流式写入（10MB 限制）、JWT 鉴权 |
 
-## 快速部署（Docker Compose）
+---
 
-### 前置要求
+## 部署方案
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) 或 Docker + Docker Compose
+根据服务器配置选择合适方案：
+
+| 方案 | 适用场景 | 构建在哪里 |
+|------|---------|-----------|
+| [方案 A：服务器直接构建](#方案-a服务器直接构建) | 服务器 ≥ 2核4G | 服务器 |
+| [方案 B：本地构建传镜像](#方案-b本地-mac-构建一键部署到服务器) | 服务器 1核2G（推荐） | 本地 Mac |
+
+---
+
+## 方案 A：服务器直接构建
+
+适合内存 ≥ 4G 的服务器。如果只有 2G，**强烈建议先开 Swap**。
+
+### 0. 开启 Swap（2G 服务器必做）
+
+```bash
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+# 验证：free -h 看到 Swap 有 4G 即可
+```
 
 ### 1. 克隆项目
 
@@ -27,52 +49,81 @@ cd zhweb
 
 ```bash
 cp .env.example .env
+nano .env   # 修改密码和访问地址
 ```
 
-按需修改 `.env`：
+关键配置项：
 
 ```env
-# 数据库（保持默认即可）
-DATABASE_URL=postgresql://zhweb:zhweb_password@db:5432/zhweb
+# JWT 密钥 —— 必须修改！
+SECRET_KEY=your-random-secret-key   # openssl rand -hex 32
 
-# JWT 密钥 —— 生产环境请务必改成随机字符串
-SECRET_KEY=change-this-to-a-random-secret-key-in-production
+# 管理员账号 —— 必须修改！
+ADMIN_PASSWORD=your-strong-password
 
-# 管理员账号
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=admin123
-
-# 允许的跨域来源 —— 填写实际的前端访问地址，多个用逗号分隔
-# 本机访问：
-ALLOWED_ORIGINS=http://localhost:3000
-# 局域网访问（换成本机内网 IP）：
-# ALLOWED_ORIGINS=http://192.168.1.100:3000
-# 公网访问（换成服务器公网 IP 或域名）：
-# ALLOWED_ORIGINS=http://123.45.67.89:3000
+# 允许跨域的来源 —— 填服务器公网 IP 或域名
+ALLOWED_ORIGINS=http://123.45.67.89:3000
 # ALLOWED_ORIGINS=https://yourdomain.com
 ```
 
-> ⚠️ 生产环境必须修改三项：
-> - `SECRET_KEY` → 改为随机字符串（可用 `openssl rand -hex 32` 生成）
-> - `ADMIN_PASSWORD` → 改为强密码
-> - `ALLOWED_ORIGINS` → 改为实际公网 IP 或域名，否则前端请求会被 CORS 拦截
-
-### 3. 启动服务
+### 3. 构建并启动
 
 ```bash
 docker compose up -d --build
 ```
 
-首次启动会拉取镜像并构建，约需 3～5 分钟。
+> Next.js 构建约需 5～15 分钟（取决于服务器性能），Dockerfile 已加入
+> `NODE_OPTIONS="--max-old-space-size=1536"` 内存限制，防止 OOM。
 
 ### 4. 访问
 
 | 地址 | 说明 |
 |------|------|
-| http://localhost:3000/check-in | 住客登记页（可分享给住客） |
-| http://localhost:3000/admin | 管理员登录 |
+| `http://服务器IP:3000/check-in` | 住客登记页 |
+| `http://服务器IP:3000/admin` | 管理后台 |
 
-局域网内其他设备访问，将 `localhost` 替换为本机 IP（如 `192.168.1.100:3000`）。
+---
+
+## 方案 B：本地 Mac 构建，一键部署到服务器
+
+**推荐用于 1核2G 服务器**。在本地 Mac 完成耗时的 `npm build`，只把运行镜像传给服务器。
+
+### 前置准备
+
+- 本地已安装 Docker Desktop
+- 本地可通过 SSH 免密登录服务器（`ssh user@IP` 不需要输密码）
+
+### 1. 修改部署脚本配置
+
+编辑 `deploy.sh` 开头的两行：
+
+```bash
+SERVER="root@123.45.67.89"     # 改为你的服务器 SSH 地址
+DEPLOY_PATH="/opt/zhweb"       # 改为服务器上的部署目录
+```
+
+### 2. 一键部署
+
+```bash
+chmod +x deploy.sh
+./deploy.sh
+```
+
+脚本会自动完成：
+1. **本地** `docker compose build`（构建前后端镜像）
+2. 打包镜像为 `.tar.gz`
+3. `scp` 上传到服务器
+4. 服务器 `docker load` 加载镜像
+5. 服务器 `docker compose up -d` 启动服务
+
+### 3. 首次部署后在服务器修改 `.env`
+
+```bash
+ssh root@服务器IP
+cd /opt/zhweb
+nano .env   # 修改 SECRET_KEY、ADMIN_PASSWORD、ALLOWED_ORIGINS
+docker compose -f docker-compose.prod.yml restart
+```
 
 ---
 
@@ -81,36 +132,44 @@ docker compose up -d --build
 ```bash
 # 查看运行状态
 docker compose ps
+# 或（方案 B）
+docker compose -f docker-compose.prod.yml ps
 
-# 查看日志
+# 查看实时日志
 docker compose logs -f
 
 # 停止服务
 docker compose down
 
-# 停止并删除数据卷（⚠️ 会清空数据库）
+# 停止并删除数据（⚠️ 会清空数据库和照片）
 docker compose down -v
 
-# 更新代码后重新构建
-git pull
-docker compose up -d --build
+# 更新代码后重新部署（方案 A）
+git pull && docker compose up -d --build
+
+# 更新代码后重新部署（方案 B，在本地 Mac 执行）
+git pull && ./deploy.sh
 ```
+
+---
 
 ## 目录结构
 
 ```
 zhweb/
-├── backend/          # FastAPI 后端
+├── backend/                # FastAPI 后端
 │   ├── app/
-│   │   ├── models.py      # 数据库模型
-│   │   ├── routers/       # API 路由
-│   │   └── main.py        # 入口
+│   │   ├── models.py           # 数据库模型
+│   │   ├── routers/            # API 路由
+│   │   └── main.py             # 入口
 │   └── requirements.txt
-├── frontend/         # Next.js 前端
-│   ├── app/               # 页面（App Router）
-│   ├── components/        # UI 组件
-│   └── lib/               # API 客户端、工具函数
-├── docker-compose.yml
+├── frontend/               # Next.js 前端
+│   ├── app/                    # 页面（App Router）
+│   ├── components/             # UI 组件
+│   └── lib/                    # API 客户端、工具函数
+├── docker-compose.yml      # 开发/方案 A 用
+├── docker-compose.prod.yml # 方案 B 服务器端用（直接 run，不 build）
+├── deploy.sh               # 方案 B 本地一键部署脚本
 └── .env.example
 ```
 

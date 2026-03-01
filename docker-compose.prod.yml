@@ -1,0 +1,56 @@
+# 生产环境部署用 —— 直接使用预构建镜像，服务器无需执行 npm build
+# 配合 deploy.sh 使用：在本地 Mac 构建镜像，传到服务器后用此文件启动
+#
+# 服务器启动命令：
+#   docker compose -f docker-compose.prod.yml up -d
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: zhweb_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zhweb
+      POSTGRES_PASSWORD: zhweb_password
+      POSTGRES_DB: zhweb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zhweb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: zhweb-backend        # 使用本地预构建镜像（由 deploy.sh 传输）
+    container_name: zhweb_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://zhweb:zhweb_password@db:5432/zhweb
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - uploads_data:/app/uploads
+
+  frontend:
+    image: zhweb-frontend       # 使用本地预构建镜像（由 deploy.sh 传输）
+    container_name: zhweb_frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  uploads_data:
