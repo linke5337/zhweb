@@ -42,11 +42,20 @@ SECRET_KEY=change-this-to-a-random-secret-key-in-production
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin123
 
-# 允许的跨域来源（填写前端访问地址）
+# 允许的跨域来源 —— 填写实际的前端访问地址，多个用逗号分隔
+# 本机访问：
 ALLOWED_ORIGINS=http://localhost:3000
+# 局域网访问（换成本机内网 IP）：
+# ALLOWED_ORIGINS=http://192.168.1.100:3000
+# 公网访问（换成服务器公网 IP 或域名）：
+# ALLOWED_ORIGINS=http://123.45.67.89:3000
+# ALLOWED_ORIGINS=https://yourdomain.com
 ```
 
-> ⚠️ 生产环境请修改 `SECRET_KEY` 和 `ADMIN_PASSWORD`，不要使用默认值。
+> ⚠️ 生产环境必须修改三项：
+> - `SECRET_KEY` → 改为随机字符串（可用 `openssl rand -hex 32` 生成）
+> - `ADMIN_PASSWORD` → 改为强密码
+> - `ALLOWED_ORIGINS` → 改为实际公网 IP 或域名，否则前端请求会被 CORS 拦截
 
 ### 3. 启动服务
 
